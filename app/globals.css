@@ -1,0 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: #0B1917; color: #F4EFE2; font-family: 'Gill Sans', 'Segoe UI', system-ui, sans-serif; }
+.amiri { font-family: 'Amiri', 'Traditional Arabic', serif; }
+.display { font-family: 'Cormorant Garamond', Georgia, serif; }
+button { -webkit-tap-highlight-color: transparent; font-family: inherit; }
+button:focus-visible { outline: 2px solid #E8CD86; outline-offset: 2px; }
+input, select { font-family: inherit; }
+
+@keyframes rise { 0% { opacity:.9; transform: translate(-50%,-50%) translateY(0) scale(1);} 100% { opacity:0; transform: translate(-50%,-50%) translateY(-90px) scale(1.15);} }
+@keyframes pulseGlow { 0%,100% { box-shadow: 0 0 40px rgba(201,162,75,.10);} 50% { box-shadow: 0 0 70px rgba(201,162,75,.22);} }
+@keyframes fadeUp { from { opacity:0; transform: translateY(10px);} to { opacity:1; transform: translateY(0);} }
+.fadeUp { animation: fadeUp .45s ease both; }
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

@@ -1,0 +1,9 @@
+{
+  "appId": "com.musalleen.app",
+  "appName": "Musalleen",
+  "webDir": "public",
+  "server": {
+    "url": "https://musalleen.vercel.app",
+    "androidScheme": "https"
+  }
+}
