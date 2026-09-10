@@ -132,9 +132,22 @@ export default function Musalleen() {
     if (data) setProfile(data);
   }, [session]);
 
+  const refreshFormatStats = useCallback(async () => {
+    if (!session?.user) return;
+    const { data, error } = await supabase.rpc("get_my_format_stats");
+    if (error) { console.error("format stats fetch failed", error); return; }
+    const map = {};
+    for (const row of data || []) map[row.format_id] = row.total;
+    setFormatStats(map);
+  }, [session]);
+
   const { queueDelta, scheduleFlush, pendingCount } = useOfflineCountQueue({
     session,
-    onFlushed: () => { setPending(pendingCount()); refreshProfile(); },
+    // Only refetch profile/format-stats when a flush actually lands, never
+    // on every optimistic tap -- this used to be driven by a `pending`
+    // effect dependency, which fired get_my_format_stats on every single
+    // tap (dozens of redundant requests during a fast tapping burst).
+    onFlushed: () => { setPending(pendingCount()); refreshProfile(); refreshFormatStats(); },
   });
 
   /* ------- guest mode init ------- */
@@ -243,16 +256,11 @@ export default function Musalleen() {
     })();
   }, [session, guest, pendingCount]);
 
-  /* ------- per-format lifetime stats (Duruds tab), refetched after each sync ------- */
+  /* ------- per-format lifetime stats (Duruds tab): once on sign-in, then re-fetched via onFlushed above ------- */
   useEffect(() => {
     if (guest || !session?.user) { setFormatStats({}); return; }
-    supabase.rpc("get_my_format_stats").then(({ data, error }) => {
-      if (error) { console.error("format stats fetch failed", error); return; }
-      const map = {};
-      for (const row of data || []) map[row.format_id] = row.total;
-      setFormatStats(map);
-    });
-  }, [session, guest, pending]);
+    refreshFormatStats();
+  }, [session, guest, refreshFormatStats]);
 
   /* ------- leaderboard (Community tab): resets daily since it's scoped to `today` ------- */
   useEffect(() => {
