@@ -39,7 +39,24 @@ insert into salawat_formats (slug, title, arabic_text, transliteration, translat
  'Allahumma salli wa sallim ala Sayyidina Muhammad',
  'O Allah, send blessings and peace upon our master Muhammad.',
  'A short, widely-used devotional form for repeated counting — not itself a direct hadith quotation like the tashahhud forms, but a simple, uncontroversial salutation used across the Muslim world.',
- 'short', 3, true)
+ 'short', 3, true),
+('tashahhud-greeting', 'The Tashahhud Greeting',
+ 'السَّلَامُ عَلَيْكَ أَيُّهَا النَّبِيُّ وَرَحْمَةُ اللَّهِ وَبَرَكَاتُهُ',
+ 'As-salamu alayka ayyuha an-nabiyyu wa rahmatullahi wa barakatuh',
+ 'Peace be upon you, O Prophet, and the mercy of Allah and His blessings.',
+ 'The direct greeting to the Prophet ﷺ said in every prayer''s tashahhud, immediately before the salawat itself — addressed to him directly, in the second person.',
+ 'tashahhud', 4, true),
+('minimal-salawat', 'Minimal Salawat',
+ 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ',
+ 'Allahumma salli ala Muhammad',
+ 'O Allah, send blessings upon Muhammad.',
+ 'The shortest core form — just the essential request, without the additional phrases found in the longer tashahhud wordings.',
+ 'short', 5, true)
+-- Deliberately not adding tariqa/collection-specific salawat (Dala'il
+-- al-Khayrat excerpts, Salawat al-Fatih, Nariyah, etc.) here -- those
+-- carry group-specific association and authenticity questions I'm not
+-- positioned to adjudicate. If wanted, they should come from the user's
+-- own sourced text, same content-authoring boundary held throughout.
 on conflict (slug) do nothing;
 
 insert into virtues (title, body, source, category, is_friday_special, sort_order) values

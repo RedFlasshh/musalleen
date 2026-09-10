@@ -76,6 +76,7 @@ export default function Musalleen() {
   const [profile, setProfile] = useState(undefined);
   const [formats, setFormats] = useState([]);
   const [format, setFormat] = useState(null);
+  const [formatStats, setFormatStats] = useState({}); // { [format_id]: total } — lifetime, per format
   const [todayCount, setTodayCount] = useState(0);
   const [dataReady, setDataReady] = useState(false);
   const [guest, setGuest] = useState(false);
@@ -221,6 +222,17 @@ export default function Musalleen() {
       setDataReady(true);
     })();
   }, [session, guest, pendingCount]);
+
+  /* ------- per-format lifetime stats (Duruds tab), refetched after each sync ------- */
+  useEffect(() => {
+    if (guest || !session?.user) { setFormatStats({}); return; }
+    supabase.rpc("get_my_format_stats").then(({ data, error }) => {
+      if (error) { console.error("format stats fetch failed", error); return; }
+      const map = {};
+      for (const row of data || []) map[row.format_id] = row.total;
+      setFormatStats(map);
+    });
+  }, [session, guest, pending]);
 
   // Level-up announcement: the whole app's theme changes silently on its own
   // (see `const C = level.theme` above) unless we tell the user why. Fires
@@ -533,7 +545,9 @@ export default function Musalleen() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                     <div>
                       <div style={{ fontSize: 15, fontWeight: 600, color: active ? C.goldBright : C.ivory }}>{f.title}</div>
-                      <div style={{ fontSize: 10.5, letterSpacing: 1, textTransform: "uppercase", color: C.faint, marginTop: 2 }}>{f.category}</div>
+                      <div style={{ fontSize: 10.5, letterSpacing: 1, textTransform: "uppercase", color: C.faint, marginTop: 2 }}>
+                        {f.category}{!guest && formatStats[f.id] > 0 ? ` · ${formatStats[f.id].toLocaleString()} lifetime` : ""}
+                      </div>
                     </div>
                     <button onClick={() => selectFormat(f)}
                       style={{
