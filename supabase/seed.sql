@@ -51,10 +51,22 @@ insert into salawat_formats (slug, title, arabic_text, transliteration, translat
  'Allahumma salli ala Muhammad',
  'O Allah, send blessings upon Muhammad.',
  'The shortest core form — just the essential request, without the additional phrases found in the longer tashahhud wordings.',
- 'short', 5, true)
--- Deliberately not adding tariqa/collection-specific salawat (Dala'il
--- al-Khayrat excerpts, Salawat al-Fatih, Nariyah, etc.) here -- those
--- carry group-specific association and authenticity questions I'm not
+ 'short', 5, true),
+('abu-humaid-extended', 'Blessings on His Family (Abu Humaid narration)',
+ 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَأَزْوَاجِهِ وَذُرِّيَّتِهِ كَمَا صَلَّيْتَ عَلَى آلِ إِبْرَاهِيمَ، وَبَارِكْ عَلَى مُحَمَّدٍ وَأَزْوَاجِهِ وَذُرِّيَّتِهِ كَمَا بَارَكْتَ عَلَى آلِ إِبْرَاهِيمَ إِنَّكَ حَمِيدٌ مَجِيدٌ',
+ 'Allahumma salli ala Muhammadin wa azwajihi wa dhurriyyatihi kama sallayta ala aali Ibrahima, wa barik ala Muhammadin wa azwajihi wa dhurriyyatihi kama barakta ala aali Ibrahima innaka Hamidun Majid',
+ 'O Allah, send blessings upon Muhammad, his wives, and his descendants, as You sent blessings upon the family of Ibrahim, and send blessings upon Muhammad, his wives, and his descendants, as You blessed the family of Ibrahim. Indeed, You are Praiseworthy, Glorious.',
+ 'Sahih al-Bukhari and Sahih Muslim, narrated by Abu Humaid as-Sa''idi — an authentically narrated tashahhud wording distinct from the Ka''b ibn ''Ujrah version above, naming the Prophet''s ﷺ wives and descendants specifically.',
+ 'extended', 6, true),
+('tibbil-qulub', 'Tibbil Qulub (Healer of Hearts)',
+ 'اللَّهُمَّ صَلِّ عَلَى سَيِّدِنَا مُحَمَّدٍ طِبِّ الْقُلُوبِ وَدَوَائِهَا وَعَافِيَةِ الْأَبْدَانِ وَشِفَائِهَا وَنُورِ الْأَبْصَارِ وَضِيَائِهَا وَعَلَى آلِهِ وَصَحْبِهِ وَسَلَّمَ',
+ 'Allahumma salli ala Sayyidina Muhammadin tibbil-qulubi wa dawaiha, wa ''afiyatil-abdani wa shifaiha, wa nooril-absari wa diyaiha, wa ala aalihi wa sahbihi wa sallam',
+ 'O Allah, send blessings upon our master Muhammad, the healer of hearts and their cure, the wellbeing of bodies and their healing, the light of sight and its radiance, and upon his family and companions, and grant peace.',
+ 'Widely known as Salawat Tibbil Qulub, popularly attributed to Imam ash-Shafi''i in later devotional tradition — not a hadith narration, and its chain back to him is not established the way the Ibrahimiyyah wordings are. Included as one of the most widely-recited named salawat across the Muslim world.',
+ 'collection', 7, true)
+-- Deliberately still not adding the more contested tariqa/collection-specific
+-- salawat (Dala'il al-Khayrat excerpts, Salawat al-Fatih, Nariyah, etc.) —
+-- those carry group-specific association and authenticity questions I'm not
 -- positioned to adjudicate. If wanted, they should come from the user's
 -- own sourced text, same content-authoring boundary held throughout.
 on conflict (slug) do nothing;
