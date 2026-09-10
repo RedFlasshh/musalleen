@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { Mail, LogOut, X, Flame, Target, BookOpen, Sparkles, Check, Map } from "lucide-react";
+import { Mail, LogOut, X, Flame, Target, BookOpen, Sparkles, Check, Map, Users } from "lucide-react";
 import { deviceTz, dayKeyInTz } from "../lib/dayKey";
 import { useOfflineCountQueue } from "../hooks/useOfflineCountQueue";
 import { LEVELS, levelFor, MILESTONES } from "../lib/levels";
@@ -24,6 +24,7 @@ const C = {
 
 const CAT_COLOR = { quran: "#C9A24B", hadith: "#3FAE7C", scholar: "#7FB3D5", friday: "#D98F4E", reflection: "#B08FC9" };
 const CAT_LABEL = { quran: "Quran", hadith: "Hadith", scholar: "Scholars", friday: "Friday", reflection: "Reflection" };
+const RECIPIENT_LABEL = { self_intention: "A personal intention", living_person: "Someone living", deceased: "Someone who has passed", ummah: "The wider Ummah", other: "Other" };
 
 const APP_NAME = "Musalleen";
 const NATIVE_REDIRECT_URL = "musalleen://login-callback";
@@ -94,6 +95,25 @@ export default function Musalleen() {
   const [levelUp, setLevelUp] = useState(null); // level object, shown once when newly reached
   const [reminderBusy, setReminderBusy] = useState(false);
   const [reminderNote, setReminderNote] = useState("");
+
+  const [communityTab, setCommunityTab] = useState("leaderboard"); // leaderboard | groups | dedications
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [groups, setGroups] = useState([]);
+  const [groupProgress, setGroupProgress] = useState({}); // { [group_id]: total }
+  const [pendingInvites, setPendingInvites] = useState([]);
+  const [dedications, setDedications] = useState([]);
+  const [communityBusy, setCommunityBusy] = useState(false);
+  const [communityNote, setCommunityNote] = useState("");
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupVisibility, setNewGroupVisibility] = useState("private_invite");
+  const [inviteEmailFor, setInviteEmailFor] = useState({}); // { [group_id]: draft email }
+  const [showAddDedication, setShowAddDedication] = useState(false);
+  const [dedRecipientType, setDedRecipientType] = useState("self_intention");
+  const [dedRecipientLabel, setDedRecipientLabel] = useState("");
+  const [dedCount, setDedCount] = useState("");
+  const [dedNote, setDedNote] = useState("");
 
   const today = dayKeyInTz(profile?.timezone || deviceTz());
   const totalLifetimeCount = guest ? guestTotal : (profile?.total_lifetime_count || 0);
@@ -233,6 +253,53 @@ export default function Musalleen() {
       setFormatStats(map);
     });
   }, [session, guest, pending]);
+
+  /* ------- leaderboard (Community tab): resets daily since it's scoped to `today` ------- */
+  useEffect(() => {
+    if (guest || !session?.user || tab !== "community" || communityTab !== "leaderboard") return;
+    setLeaderboardLoading(true);
+    supabase.rpc("get_leaderboard_today", { p_day: today }).then(({ data, error }) => {
+      if (error) console.error("leaderboard fetch failed", error);
+      setLeaderboard(data || []);
+      setLeaderboardLoading(false);
+    });
+  }, [guest, session, tab, communityTab, today, pending]);
+
+  /* ------- groups + pending invites (Community tab) ------- */
+  const refreshGroups = useCallback(() => {
+    if (!session?.user) return;
+    supabase.from("group_members").select("role, group:groups(*)").eq("user_id", session.user.id)
+      .then(({ data, error }) => {
+        if (error) { console.error("groups fetch failed", error); return; }
+        const list = (data || []).filter((r) => r.group).map((r) => ({ ...r.group, role: r.role }));
+        setGroups(list);
+        list.forEach((g) => {
+          supabase.rpc("get_group_progress", { p_group_id: g.id }).then(({ data: prog }) => {
+            setGroupProgress((prev) => ({ ...prev, [g.id]: prog?.[0]?.total ?? 0 }));
+          });
+        });
+      });
+  }, [session]);
+
+  useEffect(() => {
+    if (guest || !session?.user || tab !== "community" || communityTab !== "groups") return;
+    refreshGroups();
+    supabase.from("group_invites").select("*, group:groups(name)").eq("invited_email", session.user.email).eq("status", "pending")
+      .then(({ data, error }) => {
+        if (error) { console.error("invites fetch failed", error); return; }
+        setPendingInvites(data || []);
+      });
+  }, [guest, session, tab, communityTab, refreshGroups]);
+
+  /* ------- dedications (Community tab): private, owner-only rows ------- */
+  useEffect(() => {
+    if (guest || !session?.user || tab !== "community" || communityTab !== "dedications") return;
+    supabase.from("dedications").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) { console.error("dedications fetch failed", error); return; }
+        setDedications(data || []);
+      });
+  }, [guest, session, tab, communityTab]);
 
   // Level-up announcement: the whole app's theme changes silently on its own
   // (see `const C = level.theme` above) unless we tell the user why. Fires
@@ -398,6 +465,101 @@ export default function Musalleen() {
     if (error) console.error("could not save preferred format", error);
   };
 
+  const toggleVisibilityOptIn = async () => {
+    if (!session?.user) return;
+    const next = !profile?.visibility_opt_in;
+    setProfile((p) => (p ? { ...p, visibility_opt_in: next } : p));
+    const { error } = await supabase.from("profiles").update({ visibility_opt_in: next }).eq("id", session.user.id);
+    if (error) console.error("could not update visibility opt-in", error);
+  };
+
+  const createGroup = async () => {
+    if (!session?.user || !newGroupName.trim()) return;
+    setCommunityBusy(true);
+    setCommunityNote("");
+    try {
+      const { error } = await supabase.rpc("create_group_with_owner", {
+        p_name: newGroupName.trim(),
+        p_description: null,
+        p_visibility: newGroupVisibility,
+        p_show_exact_counts: false,
+        p_target_count: null,
+        p_target_format_id: null,
+        p_ends_at: null,
+      });
+      if (error) throw error;
+      setNewGroupName("");
+      setShowCreateGroup(false);
+      refreshGroups();
+    } catch (e) {
+      console.error("create group failed", e);
+      setCommunityNote("Could not create the group.");
+    } finally {
+      setCommunityBusy(false);
+    }
+  };
+
+  const inviteToGroup = async (groupId) => {
+    const emailToInvite = (inviteEmailFor[groupId] || "").trim();
+    if (!session?.user || !emailToInvite) return;
+    setCommunityBusy(true);
+    setCommunityNote("");
+    try {
+      const { error } = await supabase.from("group_invites").insert({
+        group_id: groupId, invited_by: session.user.id, invited_email: emailToInvite,
+      });
+      if (error) throw error;
+      setInviteEmailFor((prev) => ({ ...prev, [groupId]: "" }));
+    } catch (e) {
+      console.error("invite failed", e);
+      setCommunityNote("Could not send that invite.");
+    } finally {
+      setCommunityBusy(false);
+    }
+  };
+
+  const acceptInvite = async (inviteId) => {
+    setCommunityBusy(true);
+    setCommunityNote("");
+    try {
+      const { error } = await supabase.rpc("accept_group_invite", { p_invite_id: inviteId });
+      if (error) throw error;
+      setPendingInvites((prev) => prev.filter((i) => i.id !== inviteId));
+      refreshGroups();
+    } catch (e) {
+      console.error("accept invite failed", e);
+      setCommunityNote("Could not accept that invite.");
+    } finally {
+      setCommunityBusy(false);
+    }
+  };
+
+  const addDedication = async () => {
+    if (!session?.user || !dedCount || Number(dedCount) <= 0) return;
+    setCommunityBusy(true);
+    setCommunityNote("");
+    try {
+      const { error } = await supabase.from("dedications").insert({
+        user_id: session.user.id,
+        recipient_type: dedRecipientType,
+        recipient_label: dedRecipientLabel.trim() || null,
+        format_id: format?.id || null,
+        day: today,
+        count: parseInt(dedCount, 10),
+        note: dedNote.trim() || null,
+      });
+      if (error) throw error;
+      setDedCount(""); setDedRecipientLabel(""); setDedNote(""); setShowAddDedication(false);
+      const { data } = await supabase.from("dedications").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
+      setDedications(data || []);
+    } catch (e) {
+      console.error("add dedication failed", e);
+      setCommunityNote("Could not save that dedication.");
+    } finally {
+      setCommunityBusy(false);
+    }
+  };
+
   /* ================================================================ */
 
   if (guest === false && session === undefined) {
@@ -466,6 +628,7 @@ export default function Musalleen() {
     { id: "duruds", icon: BookOpen, label: "Duruds" },
     { id: "benefits", icon: Sparkles, label: "Benefits" },
     { id: "journey", icon: Map, label: "Journey" },
+    { id: "community", icon: Users, label: "Community" },
   ];
 
   return (
@@ -734,6 +897,218 @@ export default function Musalleen() {
                 </>
               )}
             </div>
+          </div>
+        )}
+
+        {/* -------- COMMUNITY -------- */}
+        {tab === "community" && (
+          <div>
+            <div className="display" style={{ fontSize: 22, fontWeight: 600, marginBottom: 4 }}>Community</div>
+            <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
+              A global board, group challenges, and private dedications — sincerity first, numbers second.
+            </div>
+
+            {guest ? (
+              <div style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 16, padding: 18, fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
+                Sign in to join the leaderboard, groups, and dedications.
+              </div>
+            ) : (
+              <>
+                <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                  {[["leaderboard", "Leaderboard"], ["groups", "Groups"], ["dedications", "Dedications"]].map(([id, label]) => (
+                    <button key={id} onClick={() => setCommunityTab(id)}
+                      style={{
+                        flex: 1, padding: "8px 0", borderRadius: 10, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                        border: `1px solid ${communityTab === id ? C.gold : C.line}`,
+                        background: communityTab === id ? C.surface2 : "transparent",
+                        color: communityTab === id ? C.goldBright : C.faint,
+                      }}>{label}</button>
+                  ))}
+                </div>
+
+                {communityNote && <div style={{ fontSize: 11.5, color: C.warn, marginBottom: 12, lineHeight: 1.5 }}>{communityNote}</div>}
+
+                {/* ---- leaderboard ---- */}
+                {communityTab === "leaderboard" && (
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: C.surface, border: `1px solid ${C.line}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
+                      <div style={{ fontSize: 12.5, color: C.ivory, lineHeight: 1.5 }}>
+                        Appear on today's board — alias and a rough range only, never your exact count.
+                      </div>
+                      <button onClick={toggleVisibilityOptIn}
+                        style={{
+                          width: 44, height: 26, borderRadius: 999, border: "none", cursor: "pointer", position: "relative", flexShrink: 0,
+                          background: profile?.visibility_opt_in ? C.gold : C.line,
+                        }}>
+                        <span style={{ position: "absolute", top: 3, left: profile?.visibility_opt_in ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: C.ivory, transition: "left .15s ease" }} />
+                      </button>
+                    </div>
+
+                    {leaderboardLoading && <div style={{ color: C.faint, fontSize: 13 }}>Loading…</div>}
+                    {!leaderboardLoading && leaderboard.length === 0 && (
+                      <div style={{ color: C.faint, fontSize: 13, lineHeight: 1.6 }}>No one opted in has sent salawat yet today. Resets every day.</div>
+                    )}
+                    {leaderboard.map((row, i) => (
+                      <div key={i} style={{
+                        display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 12, marginBottom: 8,
+                        background: row.is_me ? C.surface2 : C.surface, border: `1px solid ${row.is_me ? C.gold : C.line}`,
+                      }}>
+                        <span style={{ fontSize: 12, color: C.faint, width: 22 }}>{i + 1}</span>
+                        <span style={{ flex: 1, fontSize: 14, color: row.is_me ? C.goldBright : C.ivory }}>{row.alias}{row.is_me ? " (you)" : ""}</span>
+                        <span style={{ fontSize: 12, color: C.muted }}>{row.band}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* ---- groups ---- */}
+                {communityTab === "groups" && (
+                  <div>
+                    {pendingInvites.length > 0 && (
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ fontSize: 10.5, letterSpacing: 1.5, textTransform: "uppercase", color: C.faint, marginBottom: 8 }}>Invitations</div>
+                        {pendingInvites.map((inv) => (
+                          <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.surface2, border: `1px solid ${C.gold}55`, borderRadius: 12, padding: 12, marginBottom: 8 }}>
+                            <span style={{ fontSize: 13, color: C.ivory }}>{inv.group?.name || "A group"}</span>
+                            <button onClick={() => acceptInvite(inv.id)} disabled={communityBusy}
+                              style={{ fontSize: 11.5, fontWeight: 700, color: "#1B1508", background: C.gold, border: "none", borderRadius: 999, padding: "5px 12px", cursor: "pointer" }}>
+                              Accept
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {groups.map((g) => (
+                      <div key={g.id} style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 16, padding: 16, marginBottom: 12 }}>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: C.ivory }}>{g.name}</div>
+                        <div style={{ fontSize: 10.5, color: C.faint, textTransform: "uppercase", letterSpacing: 1, marginTop: 2 }}>
+                          {g.visibility === "public_joinable" ? "Public" : "Invite-only"} · {g.role}
+                        </div>
+                        {g.description && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{g.description}</div>}
+
+                        {g.target_count ? (
+                          <div style={{ marginTop: 12 }}>
+                            <div style={{ height: 8, background: C.surface2, borderRadius: 999, overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: `${Math.min(((groupProgress[g.id] || 0) / g.target_count) * 100, 100)}%`, background: C.gold, borderRadius: 999 }} />
+                            </div>
+                            <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>
+                              {g.show_exact_counts
+                                ? `${(groupProgress[g.id] || 0).toLocaleString()} of ${g.target_count.toLocaleString()}`
+                                : `${Math.min(Math.round(((groupProgress[g.id] || 0) / g.target_count) * 100), 100)}% of the way there`}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 11.5, color: C.faint, marginTop: 10 }}>
+                            {g.show_exact_counts ? `${(groupProgress[g.id] || 0).toLocaleString()} sent together` : "Progress kept between members, not shown as a number"}
+                          </div>
+                        )}
+
+                        {g.role === "owner" && (
+                          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                            <input value={inviteEmailFor[g.id] || ""} onChange={(e) => setInviteEmailFor((prev) => ({ ...prev, [g.id]: e.target.value }))}
+                              type="email" placeholder="Invite by email" style={{ ...inputStyle, padding: "8px 12px", fontSize: 13 }} />
+                            <button onClick={() => inviteToGroup(g.id)} disabled={communityBusy}
+                              style={{ fontSize: 12, fontWeight: 700, color: "#1B1508", background: C.gold, border: "none", borderRadius: 10, padding: "0 16px", cursor: "pointer" }}>
+                              Invite
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {groups.length === 0 && <div style={{ color: C.faint, fontSize: 13, marginBottom: 12 }}>You're not in a group yet.</div>}
+
+                    {!showCreateGroup ? (
+                      <button onClick={() => setShowCreateGroup(true)}
+                        style={{ ...goldBtn, background: C.surface2, color: C.ivory, border: `1px solid ${C.gold}` }}>
+                        Start a group
+                      </button>
+                    ) : (
+                      <div style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 16, padding: 16 }}>
+                        <input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} placeholder="Group name"
+                          style={{ ...inputStyle, marginBottom: 10 }} />
+                        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                          {[["private_invite", "Invite-only"], ["public_joinable", "Public"]].map(([v, l]) => (
+                            <button key={v} onClick={() => setNewGroupVisibility(v)}
+                              style={{
+                                flex: 1, padding: "8px 0", borderRadius: 10, fontSize: 12, cursor: "pointer",
+                                border: `1px solid ${newGroupVisibility === v ? C.gold : C.line}`,
+                                background: newGroupVisibility === v ? C.surface2 : "transparent",
+                                color: newGroupVisibility === v ? C.goldBright : C.faint,
+                              }}>{l}</button>
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => setShowCreateGroup(false)}
+                            style={{ flex: 1, background: "transparent", border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 0", color: C.faint, cursor: "pointer", fontSize: 13 }}>
+                            Cancel
+                          </button>
+                          <button onClick={createGroup} disabled={communityBusy || !newGroupName.trim()}
+                            style={{ flex: 1, ...goldBtn, width: "auto", opacity: communityBusy ? 0.7 : 1 }}>
+                            Create
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ---- dedications ---- */}
+                {communityTab === "dedications" && (
+                  <div>
+                    <div style={{ fontSize: 12, color: C.faint, marginBottom: 14, lineHeight: 1.6 }}>
+                      A private record only you can see — no one else, ever. Gift a batch of salawat to someone, living or deceased, or note an intention.
+                    </div>
+
+                    {dedications.map((d) => (
+                      <div key={d.id} style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 14, padding: 14, marginBottom: 10 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span style={{ fontSize: 13.5, color: C.ivory }}>{d.recipient_label || RECIPIENT_LABEL[d.recipient_type]}</span>
+                          <span style={{ fontSize: 13, color: C.goldBright, fontWeight: 600 }}>{d.count.toLocaleString()}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: C.faint, marginTop: 4 }}>{d.day}{d.note ? ` · ${d.note}` : ""}</div>
+                      </div>
+                    ))}
+                    {dedications.length === 0 && <div style={{ color: C.faint, fontSize: 13, marginBottom: 12 }}>No dedications yet.</div>}
+
+                    {!showAddDedication ? (
+                      <button onClick={() => setShowAddDedication(true)}
+                        style={{ ...goldBtn, background: C.surface2, color: C.ivory, border: `1px solid ${C.gold}` }}>
+                        Add a dedication
+                      </button>
+                    ) : (
+                      <div style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 16, padding: 16 }}>
+                        <select value={dedRecipientType} onChange={(e) => setDedRecipientType(e.target.value)}
+                          style={{ ...inputStyle, marginBottom: 10 }}>
+                          <option value="self_intention">A personal intention</option>
+                          <option value="living_person">Someone living</option>
+                          <option value="deceased">Someone who has passed</option>
+                          <option value="ummah">The wider Ummah</option>
+                          <option value="other">Other</option>
+                        </select>
+                        <input value={dedRecipientLabel} onChange={(e) => setDedRecipientLabel(e.target.value)} placeholder="Name or short label (optional)"
+                          style={{ ...inputStyle, marginBottom: 10 }} />
+                        <input value={dedCount} onChange={(e) => setDedCount(e.target.value.replace(/[^0-9]/g, ""))} placeholder="How many salawat" inputMode="numeric"
+                          style={{ ...inputStyle, marginBottom: 10 }} />
+                        <input value={dedNote} onChange={(e) => setDedNote(e.target.value)} placeholder="Note (optional)"
+                          style={{ ...inputStyle, marginBottom: 12 }} />
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => setShowAddDedication(false)}
+                            style={{ flex: 1, background: "transparent", border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 0", color: C.faint, cursor: "pointer", fontSize: 13 }}>
+                            Cancel
+                          </button>
+                          <button onClick={addDedication} disabled={communityBusy || !dedCount}
+                            style={{ flex: 1, ...goldBtn, width: "auto", opacity: communityBusy ? 0.7 : 1 }}>
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
