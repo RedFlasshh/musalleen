@@ -27,7 +27,19 @@ insert into salawat_formats (slug, title, arabic_text, transliteration, translat
  'Allahumma salli ala Muhammadin wa ala aali Muhammad, kama sallayta ala Ibrahima wa ala aali Ibrahim, innaka Hamidun Majid',
  'O Allah, send blessings upon Muhammad and the family of Muhammad, as You sent blessings upon Ibrahim and the family of Ibrahim. Indeed You are Praiseworthy, Glorious.',
  'The salutation taught by the Prophet ﷺ himself when the companions asked how to send blessings upon him, recited in every prayer''s tashahhud.',
- 'tashahhud', 1, true)
+ 'tashahhud', 1, true),
+('ibrahimiyyah-barakah', 'Salawat Ibrahimiyyah (with Barakah)',
+ 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ كَمَا صَلَّيْتَ عَلَى آلِ إِبْرَاهِيمَ، وَبَارِكْ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ كَمَا بَارَكْتَ عَلَى آلِ إِبْرَاهِيمَ إِنَّكَ حَمِيدٌ مَجِيدٌ',
+ 'Allahumma salli ala Muhammadin wa ala aali Muhammad, kama sallayta ala aali Ibrahim, wa barik ala Muhammadin wa ala aali Muhammad, kama barakta ala aali Ibrahim, innaka Hamidun Majid',
+ 'O Allah, send blessings upon Muhammad and the family of Muhammad, as You sent blessings upon the family of Ibrahim, and bless Muhammad and the family of Muhammad, as You blessed the family of Ibrahim. Indeed You are Praiseworthy, Glorious.',
+ 'A second authentic wording taught by the Prophet ﷺ, narrated by Ka''b ibn ''Ujrah (Sahih al-Bukhari) — adds "wa barik" (and bless) alongside "salli".',
+ 'tashahhud', 2, true),
+('short-salawat', 'Short Salawat',
+ 'اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى سَيِّدِنَا مُحَمَّدٍ',
+ 'Allahumma salli wa sallim ala Sayyidina Muhammad',
+ 'O Allah, send blessings and peace upon our master Muhammad.',
+ 'A short, widely-used devotional form for repeated counting — not itself a direct hadith quotation like the tashahhud forms, but a simple, uncontroversial salutation used across the Muslim world.',
+ 'short', 3, true)
 on conflict (slug) do nothing;
 
 insert into virtues (title, body, source, category, is_friday_special, sort_order) values

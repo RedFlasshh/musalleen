@@ -2,15 +2,14 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { Mail, LogOut, X, Flame } from "lucide-react";
+import { Mail, LogOut, X, Flame, Target, BookOpen, Sparkles, Check } from "lucide-react";
 import { deviceTz, dayKeyInTz } from "../lib/dayKey";
 import { useOfflineCountQueue } from "../hooks/useOfflineCountQueue";
 
 /* ------------------------------------------------------------------ */
-/* Design tokens — Phase 2 keeps this static; the level-driven theme    */
-/* system (const C = level.theme, matching Mustaghfirin's pattern) is   */
-/* explicitly Phase 3 work, built once the habit-engine columns are     */
-/* actually read from somewhere.                                        */
+/* Design tokens — Phase 2/3 UI keeps this static; the level-driven     */
+/* theme system (const C = level.theme, matching Mustaghfirin's         */
+/* pattern) is the next piece of Phase 3 after this tab structure.      */
 /* ------------------------------------------------------------------ */
 const C = {
   bg: "#0B1917", surface: "#122622", surface2: "#1A332D", line: "#22423A",
@@ -18,10 +17,14 @@ const C = {
   muted: "#8BA79A", faint: "#5C776C", warn: "#D98F4E",
 };
 
+const CAT_COLOR = { quran: "#C9A24B", hadith: "#3FAE7C", scholar: "#7FB3D5", friday: "#D98F4E", reflection: "#B08FC9" };
+const CAT_LABEL = { quran: "Quran", hadith: "Hadith", scholar: "Scholars", friday: "Friday", reflection: "Reflection" };
+
 const APP_NAME = "Musalleen";
 const NATIVE_REDIRECT_URL = "musalleen://login-callback";
 const GUEST_KEY = "musalleen-guest-mode";
 const GUEST_TODAY_KEY = "musalleen-guest-today"; // { day, count } — device-only
+const GUEST_FORMAT_KEY = "musalleen-guest-format"; // format id — device-only
 
 // Function, not a module-level constant: Capacitor's bridge (window.Capacitor)
 // attaches asynchronously, and this module can finish evaluating before it
@@ -50,6 +53,7 @@ const Shell = ({ children }) => (
 export default function Musalleen() {
   const [session, setSession] = useState(undefined);
   const [profile, setProfile] = useState(undefined);
+  const [formats, setFormats] = useState([]);
   const [format, setFormat] = useState(null);
   const [todayCount, setTodayCount] = useState(0);
   const [dataReady, setDataReady] = useState(false);
@@ -59,6 +63,11 @@ export default function Musalleen() {
   const [email, setEmail] = useState("");
   const [emailSent, setEmailSent] = useState(false);
   const [ripples, setRipples] = useState([]);
+  const [tab, setTab] = useState("count");
+
+  const [virtues, setVirtues] = useState([]);
+  const [dailyIdx, setDailyIdx] = useState(0);
+  const [browseIdx, setBrowseIdx] = useState(0);
 
   const today = dayKeyInTz(profile?.timezone || deviceTz());
 
@@ -106,10 +115,36 @@ export default function Musalleen() {
     return () => { handle?.then?.((h) => h.remove()); };
   }, []);
 
-  /* ------- load the one seeded salawat format (Phase 2: no picker yet) ------- */
+  /* ------- load all durud formats (Duruds tab + active-format selection) ------- */
   useEffect(() => {
-    supabase.from("salawat_formats").select("*").eq("is_active", true).order("sort_order").limit(1).maybeSingle()
-      .then(({ data }) => setFormat(data));
+    supabase.from("salawat_formats").select("*").eq("is_active", true).order("sort_order")
+      .then(({ data }) => setFormats(data || []));
+  }, []);
+
+  /* ------- once formats + profile/guest state are known, pick the active one ------- */
+  useEffect(() => {
+    if (formats.length === 0) return;
+    let preferredId = null;
+    if (guest) {
+      try { preferredId = localStorage.getItem(GUEST_FORMAT_KEY); } catch (e) {}
+    } else if (profile?.preferred_format_id) {
+      preferredId = profile.preferred_format_id;
+    }
+    const found = formats.find((f) => f.id === preferredId);
+    setFormat(found || formats[0]);
+  }, [formats, profile, guest]);
+
+  /* ------- load virtues once (Benefits tab) ------- */
+  useEffect(() => {
+    supabase.from("virtues").select("*").order("sort_order").then(({ data }) => {
+      const list = data || [];
+      setVirtues(list);
+      if (list.length) {
+        const doy = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
+        setDailyIdx(doy % list.length);
+        setBrowseIdx(Math.floor(Math.random() * list.length));
+      }
+    });
   }, []);
 
   /* ------- load / create profile, load today's total ------- */
@@ -219,6 +254,18 @@ export default function Musalleen() {
     scheduleFlush();
   };
 
+  const selectFormat = async (f) => {
+    setFormat(f);
+    if (guest) {
+      try { localStorage.setItem(GUEST_FORMAT_KEY, f.id); } catch (e) {}
+      return;
+    }
+    if (!session?.user) return;
+    setProfile((p) => (p ? { ...p, preferred_format_id: f.id } : p));
+    const { error } = await supabase.from("profiles").update({ preferred_format_id: f.id }).eq("id", session.user.id);
+    if (error) console.error("could not save preferred format", error);
+  };
+
   /* ================================================================ */
 
   if (guest === false && session === undefined) {
@@ -279,11 +326,18 @@ export default function Musalleen() {
 
   const goal = profile?.daily_goal || 100;
   const pct = Math.min(todayCount / goal, 1);
+  const daily = virtues[dailyIdx];
+  const benefit = virtues[browseIdx];
 
-  /* ------- main counter screen ------- */
+  const NAV = [
+    { id: "count", icon: Target, label: "Count" },
+    { id: "duruds", icon: BookOpen, label: "Duruds" },
+    { id: "benefits", icon: Sparkles, label: "Benefits" },
+  ];
+
   return (
     <Shell>
-      <div style={{ maxWidth: 460, margin: "0 auto", padding: "calc(20px + env(safe-area-inset-top)) 18px calc(40px + env(safe-area-inset-bottom))", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <div style={{ maxWidth: 460, margin: "0 auto", padding: "calc(20px + env(safe-area-inset-top)) 18px calc(96px + env(safe-area-inset-bottom))", minHeight: "100vh" }}>
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
           <div>
             <div className="display" style={{ fontSize: 20, fontWeight: 600 }}>{APP_NAME}</div>
@@ -305,39 +359,155 @@ export default function Musalleen() {
           </div>
         </header>
 
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-          <div className="amiri" style={{ fontSize: 22, color: C.goldBright, lineHeight: 2, marginBottom: 8, direction: "rtl" }}>
-            {format?.arabic_text}
-          </div>
-          {format?.transliteration && (
-            <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.6, marginBottom: 28, maxWidth: 360 }}>{format.transliteration}</div>
-          )}
-
-          <button onClick={tapCount} style={{
-            position: "relative", width: 220, height: 220, borderRadius: "50%",
-            background: `conic-gradient(${C.gold} ${pct * 360}deg, ${C.surface2} 0deg)`,
-            border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <div style={{ width: 190, height: 190, borderRadius: "50%", background: C.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-              <span className="display" style={{ fontSize: 48, fontWeight: 600, color: C.ivory }}>{todayCount}</span>
-              <span style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>of {goal} today</span>
+        {/* -------- COUNT -------- */}
+        {tab === "count" && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", minHeight: "calc(100vh - 220px)" }}>
+            <div className="amiri" style={{ fontSize: 22, color: C.goldBright, lineHeight: 2, marginBottom: 8, direction: "rtl" }}>
+              {format?.arabic_text}
             </div>
-            {ripples.map((id) => (
-              <div key={id} style={{ position: "absolute", inset: 0, borderRadius: "50%", border: `2px solid ${C.goldBright}`, animation: "rippleOut .9s ease-out forwards" }} />
-            ))}
-          </button>
+            {format?.transliteration && (
+              <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.6, marginBottom: 8, maxWidth: 360 }}>{format.transliteration}</div>
+            )}
+            <button onClick={() => setTab("duruds")} style={{ background: "none", border: "none", color: C.gold, fontSize: 11.5, cursor: "pointer", marginBottom: 20, textDecoration: "underline" }}>
+              Change durud
+            </button>
 
-          <div style={{ fontSize: 12.5, color: C.faint, marginTop: 24, maxWidth: 300, lineHeight: 1.6 }}>
-            Tap for each salawat. Set a number you can keep up daily — consistency matters more than quantity.
-          </div>
+            <button onClick={tapCount} style={{
+              position: "relative", width: 220, height: 220, borderRadius: "50%",
+              background: `conic-gradient(${C.gold} ${pct * 360}deg, ${C.surface2} 0deg)`,
+              border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <div style={{ width: 190, height: 190, borderRadius: "50%", background: C.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                <span className="display" style={{ fontSize: 48, fontWeight: 600, color: C.ivory }}>{todayCount}</span>
+                <span style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>of {goal} today</span>
+              </div>
+              {ripples.map((id) => (
+                <div key={id} style={{ position: "absolute", inset: 0, borderRadius: "50%", border: `2px solid ${C.goldBright}`, animation: "rippleOut .9s ease-out forwards" }} />
+              ))}
+            </button>
 
-          {guest && (
-            <div style={{ marginTop: 20, fontSize: 11.5, color: C.faint, maxWidth: 300, lineHeight: 1.6 }}>
-              Counting as a guest — saved on this device only.
+            <div style={{ fontSize: 12.5, color: C.faint, marginTop: 24, maxWidth: 300, lineHeight: 1.6 }}>
+              Tap for each salawat. Set a number you can keep up daily — consistency matters more than quantity.
             </div>
-          )}
-        </div>
+
+            {guest && (
+              <div style={{ marginTop: 20, fontSize: 11.5, color: C.faint, maxWidth: 300, lineHeight: 1.6 }}>
+                Counting as a guest — saved on this device only.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* -------- DURUDS -------- */}
+        {tab === "duruds" && (
+          <div>
+            <div className="display" style={{ fontSize: 22, fontWeight: 600, marginBottom: 4 }}>Duruds</div>
+            <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
+              Every form of salawat carries the same reward. Pick whichever moves you — the tap counter below always uses the one you choose here.
+            </div>
+            {formats.map((f) => {
+              const active = format?.id === f.id;
+              return (
+                <div key={f.id} style={{ background: active ? C.surface2 : C.surface, border: `1px solid ${active ? C.gold : C.line}`, borderRadius: 16, padding: 18, marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: active ? C.goldBright : C.ivory }}>{f.title}</div>
+                      <div style={{ fontSize: 10.5, letterSpacing: 1, textTransform: "uppercase", color: C.faint, marginTop: 2 }}>{f.category}</div>
+                    </div>
+                    <button onClick={() => selectFormat(f)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700,
+                        color: active ? "#1B1508" : C.gold, background: active ? C.gold : "transparent",
+                        border: `1px solid ${C.gold}`, borderRadius: 999, padding: "5px 12px", cursor: "pointer", flexShrink: 0,
+                      }}>
+                      {active ? <><Check size={12} /> Active</> : "Use this"}
+                    </button>
+                  </div>
+                  <div className="amiri" style={{ fontSize: 19, color: C.goldBright, lineHeight: 1.9, direction: "rtl", marginBottom: 8 }}>{f.arabic_text}</div>
+                  {f.transliteration && <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.55, marginBottom: 6, fontStyle: "italic" }}>{f.transliteration}</div>}
+                  {f.translation && <div style={{ fontSize: 13, color: C.ivory, lineHeight: 1.55, marginBottom: 8 }}>{f.translation}</div>}
+                  {f.source_note && <div style={{ fontSize: 11.5, color: C.faint, lineHeight: 1.5 }}>{f.source_note}</div>}
+                </div>
+              );
+            })}
+            {formats.length === 0 && <div style={{ color: C.faint, fontSize: 13 }}>Loading…</div>}
+          </div>
+        )}
+
+        {/* -------- BENEFITS -------- */}
+        {tab === "benefits" && (
+          <div>
+            <div className="display" style={{ fontSize: 22, fontWeight: 600, marginBottom: 4 }}>Benefits</div>
+            <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
+              Direct promises from the Quran and hadith are shown as such; general wisdom is clearly labelled Scholars or Reflection, never presented as scripture.
+            </div>
+
+            {daily && (
+              <div style={{ background: C.surface2, border: `1px solid ${CAT_COLOR[daily.category]}55`, borderRadius: 16, padding: 18, marginBottom: 16 }}>
+                <div style={{ fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: CAT_COLOR[daily.category], marginBottom: 6 }}>
+                  Today's Reminder · {CAT_LABEL[daily.category]}
+                </div>
+                <div className="display" style={{ fontSize: 19, fontWeight: 600, marginBottom: 6 }}>{daily.title}</div>
+                <div style={{ fontSize: 13.5, lineHeight: 1.6, opacity: 0.92 }}>{daily.body}</div>
+                <div style={{ fontSize: 11.5, color: C.faint, marginTop: 10, fontStyle: "italic" }}>{daily.source}</div>
+              </div>
+            )}
+
+            {benefit && (
+              <div style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 16, padding: 18 }}>
+                <div style={{ fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: CAT_COLOR[benefit.category], marginBottom: 6 }}>
+                  Browse · {CAT_LABEL[benefit.category]}
+                </div>
+                <div className="display" style={{ fontSize: 19, fontWeight: 600, marginBottom: 6 }}>{benefit.title}</div>
+                <div style={{ fontSize: 13.5, lineHeight: 1.6, opacity: 0.92 }}>{benefit.body}</div>
+                <div style={{ fontSize: 11.5, color: C.faint, marginTop: 10, fontStyle: "italic" }}>{benefit.source}</div>
+                <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                  <button onClick={() => setBrowseIdx((browseIdx - 1 + virtues.length) % virtues.length)}
+                    style={{ flex: 1, background: C.surface2, border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 0", color: C.ivory, cursor: "pointer", fontSize: 13 }}>
+                    ← Previous
+                  </button>
+                  <button onClick={() => {
+                    let r = Math.floor(Math.random() * virtues.length);
+                    if (r === browseIdx) r = (r + 1) % virtues.length;
+                    setBrowseIdx(r);
+                  }} style={{ flex: 1, background: C.gold, border: "none", borderRadius: 10, padding: "10px 0", color: "#1B1508", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                    Shuffle
+                  </button>
+                  <button onClick={() => setBrowseIdx((browseIdx + 1) % virtues.length)}
+                    style={{ flex: 1, background: C.surface2, border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 0", color: C.ivory, cursor: "pointer", fontSize: 13 }}>
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
+            {virtues.length === 0 && <div style={{ color: C.faint, fontSize: 13 }}>Loading…</div>}
+          </div>
+        )}
       </div>
+
+      {/* -------- bottom nav -------- */}
+      <nav style={{
+        position: "fixed", left: 0, right: 0, bottom: 0, display: "flex",
+        background: C.surface, borderTop: `1px solid ${C.line}`,
+        padding: "10px 8px calc(10px + env(safe-area-inset-bottom))",
+      }}>
+        <div style={{ maxWidth: 460, margin: "0 auto", display: "flex", width: "100%" }}>
+          {NAV.map(({ id, icon: Icon, label }) => {
+            const active = tab === id;
+            return (
+              <button key={id} onClick={() => setTab(id)}
+                style={{
+                  flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                  background: "none", border: "none", cursor: "pointer", padding: "4px 0",
+                  color: active ? C.goldBright : C.faint,
+                }}>
+                <Icon size={20} />
+                <span style={{ fontSize: 10.5 }}>{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
 
       <style jsx global>{`
         @keyframes rippleOut { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(1.12); } }
