@@ -350,6 +350,11 @@ export default function Musalleen() {
       }
     } catch (e) {
       console.error("Google sign-in failed:", e);
+    } finally {
+      // Always release the button once the Custom Tab has been opened (or
+      // failed to) -- this used to only reset on error, so a *successful*
+      // sign-in left authBusy stuck at true forever, silently re-disabling
+      // the button the next time this screen renders after a sign-out.
       setAuthBusy(false);
     }
   };
@@ -371,7 +376,15 @@ export default function Musalleen() {
     }
   };
 
-  const signOut = async () => { await supabase.auth.signOut(); setProfile(undefined); };
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setProfile(undefined);
+    // Reset the login screen's own state too, in case it was left mid-flow
+    // (e.g. authBusy stuck true from a cancelled or completed sign-in).
+    setAuthBusy(false);
+    setEmail("");
+    setEmailSent(false);
+  };
   const exitApp = () => window.Capacitor?.Plugins?.App?.exitApp();
 
   const tapCount = () => {
@@ -579,6 +592,12 @@ export default function Musalleen() {
     return (
       <Shell>
         <div style={{ maxWidth: 420, margin: "0 auto", padding: "calc(60px + env(safe-area-inset-top)) 22px calc(40px + env(safe-area-inset-bottom))" }} className="fadeUp">
+          {isNativeApp() && (
+            <button onClick={exitApp} aria-label="Exit app"
+              style={{ position: "absolute", top: "calc(18px + env(safe-area-inset-top))", right: 18, background: "none", border: "none", color: C.faint, cursor: "pointer", padding: 4 }}>
+              <X size={20} />
+            </button>
+          )}
           <div style={{ textAlign: "center", marginBottom: 36 }}>
             <div className="amiri" style={{ fontSize: 34, color: C.goldBright, lineHeight: 1.7 }}>اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ</div>
             <div className="display" style={{ fontSize: 34, fontWeight: 600, marginTop: 8 }}>{APP_NAME}</div>
