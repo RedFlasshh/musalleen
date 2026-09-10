@@ -2,17 +2,22 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { Mail, LogOut, X, Flame, Target, BookOpen, Sparkles, Check } from "lucide-react";
+import { Mail, LogOut, X, Flame, Target, BookOpen, Sparkles, Check, Map } from "lucide-react";
 import { deviceTz, dayKeyInTz } from "../lib/dayKey";
 import { useOfflineCountQueue } from "../hooks/useOfflineCountQueue";
+import { LEVELS, levelFor, MILESTONES } from "../lib/levels";
 
 /* ------------------------------------------------------------------ */
-/* Design tokens — Phase 2/3 UI keeps this static; the level-driven     */
-/* theme system (const C = level.theme, matching Mustaghfirin's         */
-/* pattern) is the next piece of Phase 3 after this tab structure.      */
+/* Module-level C = Wahda's (level 1) theme exactly, so the login/       */
+/* loading screens — rendered before any level is known — match the     */
+/* very first authenticated view with no visual jump. Once inside the   */
+/* main component, `const C = level.theme` shadows this for the rest of */
+/* the render (see below), and every C.xxx reference in this file       */
+/* — there are many — picks up the current level's palette automatically*/
+/* via normal JS scoping. Same pattern proven in Mustaghfirin.          */
 /* ------------------------------------------------------------------ */
 const C = {
-  bg: "#0B1917", surface: "#122622", surface2: "#1A332D", line: "#22423A",
+  bg: "#0A1A20", surface: "#10262E", surface2: "#16333C", line: "#1F4550",
   gold: "#C9A24B", goldBright: "#E8CD86", ivory: "#F4EFE2",
   muted: "#8BA79A", faint: "#5C776C", warn: "#D98F4E",
 };
@@ -25,6 +30,8 @@ const NATIVE_REDIRECT_URL = "musalleen://login-callback";
 const GUEST_KEY = "musalleen-guest-mode";
 const GUEST_TODAY_KEY = "musalleen-guest-today"; // { day, count } — device-only
 const GUEST_FORMAT_KEY = "musalleen-guest-format"; // format id — device-only
+const GUEST_TOTAL_KEY = "musalleen-guest-total"; // lifetime count integer — device-only, drives guest-mode levels
+const LEVEL_SEEN_KEY = "musalleen-level-seen"; // highest level id already celebrated, so the level-up modal fires once per level
 
 // Function, not a module-level constant: Capacitor's bridge (window.Capacitor)
 // attaches asynchronously, and this module can finish evaluating before it
@@ -68,8 +75,19 @@ export default function Musalleen() {
   const [virtues, setVirtues] = useState([]);
   const [dailyIdx, setDailyIdx] = useState(0);
   const [browseIdx, setBrowseIdx] = useState(0);
+  const [guestTotal, setGuestTotal] = useState(0);
+  const [levelUp, setLevelUp] = useState(null); // level object, shown once when newly reached
 
   const today = dayKeyInTz(profile?.timezone || deviceTz());
+  const totalLifetimeCount = guest ? guestTotal : (profile?.total_lifetime_count || 0);
+  const { cur: level, next: nextLevel } = levelFor(totalLifetimeCount);
+  // Shadows the module-level C for the rest of this render — every C.xxx
+  // reference below (there are many) automatically reads the current
+  // level's palette via normal JS scoping. inputStyle/goldBtn are
+  // redeclared alongside it since they depend on C.
+  const C = level.theme;
+  const inputStyle = { width: "100%", background: C.bg, border: `1px solid ${C.line}`, borderRadius: 10, padding: "12px 14px", color: C.ivory, fontSize: 15 };
+  const goldBtn = { background: C.gold, color: "#1B1508", fontWeight: 700, border: "none", borderRadius: 10, padding: "12px 18px", fontSize: 15, cursor: "pointer", width: "100%" };
 
   const refreshProfile = useCallback(async () => {
     if (!session?.user) return;
@@ -156,6 +174,9 @@ export default function Musalleen() {
         const todayKey = dayKeyInTz(deviceTz());
         setTodayCount(cached && cached.day === todayKey ? cached.count : 0);
       } catch (e) { setTodayCount(0); }
+      try {
+        setGuestTotal(parseInt(localStorage.getItem(GUEST_TOTAL_KEY) || "0", 10));
+      } catch (e) { setGuestTotal(0); }
       setDataReady(true);
       return;
     }
@@ -184,6 +205,22 @@ export default function Musalleen() {
       setDataReady(true);
     })();
   }, [session, guest, pendingCount]);
+
+  // Level-up announcement: the whole app's theme changes silently on its own
+  // (see `const C = level.theme` above) unless we tell the user why. Fires
+  // once per level actually reached — never for level 1 (Wahda), which is
+  // everyone's starting point, not something to "congratulate". Waits for
+  // dataReady so a fresh load can't misfire before the real total arrives.
+  useEffect(() => {
+    if (!dataReady || level.id <= 1) return;
+    try {
+      const seen = parseInt(localStorage.getItem(LEVEL_SEEN_KEY) || "0", 10);
+      if (level.id > seen) {
+        setLevelUp(level);
+        localStorage.setItem(LEVEL_SEEN_KEY, String(level.id));
+      }
+    } catch (e) {}
+  }, [dataReady, level.id]);
 
   /* ------- actions ------- */
   const enterGuest = () => {
@@ -243,6 +280,11 @@ export default function Musalleen() {
       setTodayCount((c) => {
         const next = c + 1;
         try { localStorage.setItem(GUEST_TODAY_KEY, JSON.stringify({ day: dayKeyInTz(deviceTz()), count: next })); } catch (e) {}
+        return next;
+      });
+      setGuestTotal((t) => {
+        const next = t + 1;
+        try { localStorage.setItem(GUEST_TOTAL_KEY, String(next)); } catch (e) {}
         return next;
       });
       return;
@@ -333,6 +375,7 @@ export default function Musalleen() {
     { id: "count", icon: Target, label: "Count" },
     { id: "duruds", icon: BookOpen, label: "Duruds" },
     { id: "benefits", icon: Sparkles, label: "Benefits" },
+    { id: "journey", icon: Map, label: "Journey" },
   ];
 
   return (
@@ -483,7 +526,100 @@ export default function Musalleen() {
             {virtues.length === 0 && <div style={{ color: C.faint, fontSize: 13 }}>Loading…</div>}
           </div>
         )}
+
+        {/* -------- JOURNEY -------- */}
+        {tab === "journey" && (
+          <div>
+            <div className="display" style={{ fontSize: 22, fontWeight: 600, marginBottom: 4 }}>Your Journey</div>
+            <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
+              Measured in total salawat sent, across every durud you've counted.
+            </div>
+
+            <div style={{ background: C.surface2, border: `1px solid ${level.theme.ring}55`, borderRadius: 18, padding: 20, marginBottom: 12, textAlign: "center" }}>
+              <div className="amiri" style={{ fontSize: 26, color: level.theme.ring, lineHeight: 1.6 }}>{level.ar}</div>
+              <div className="display" style={{ fontSize: 26, fontWeight: 600, marginTop: 2 }}>{level.name}</div>
+              <div style={{ fontSize: 11, letterSpacing: 2.5, textTransform: "uppercase", color: C.faint, marginTop: 2 }}>
+                Level {level.id} · {level.en}
+              </div>
+              <div style={{ fontSize: 12.5, color: C.muted, marginTop: 10, lineHeight: 1.55, fontStyle: "italic" }}>{level.note}</div>
+
+              {nextLevel ? (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ height: 8, background: C.ringTrack, borderRadius: 999, overflow: "hidden" }}>
+                    <div style={{
+                      height: "100%",
+                      width: `${Math.min(((totalLifetimeCount - level.days) / (nextLevel.days - level.days)) * 100, 100)}%`,
+                      background: `linear-gradient(90deg, ${level.theme.ring}, ${nextLevel.theme.ring})`,
+                      borderRadius: 999, transition: "width .5s ease",
+                    }} />
+                  </div>
+                  <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>
+                    {nextLevel.days - totalLifetimeCount} more to {nextLevel.name} ({nextLevel.en})
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: C.goldBright, marginTop: 14 }}>✦ Every level reached ✦</div>
+              )}
+            </div>
+
+            <div style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 16, padding: 20, marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                <span className="display" style={{ fontSize: 34, fontWeight: 600, color: C.goldBright }}>{totalLifetimeCount.toLocaleString()}</span>
+                <span style={{ fontSize: 13, color: C.muted }}>lifetime salawat</span>
+              </div>
+              {!guest && (
+                <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: C.muted, marginTop: 8 }}>
+                  <Flame size={14} color={profile?.streak_current > 0 ? C.warn : C.faint} />
+                  {profile?.streak_current || 0} day streak · longest {profile?.streak_longest || 0}
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 16, padding: 16 }}>
+              <div style={{ fontSize: 10.5, letterSpacing: 1.5, textTransform: "uppercase", color: C.faint, marginBottom: 10 }}>Milestones</div>
+              {MILESTONES.map((m) => {
+                const done = totalLifetimeCount >= m.threshold;
+                return (
+                  <div key={m.threshold} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+                    <span style={{ fontSize: 14, color: done ? C.goldBright : C.faint, width: 18 }}>{done ? "✦" : "○"}</span>
+                    <span style={{ width: 9, height: 9, borderRadius: 99, background: done ? m.level.theme.ring : C.faint, flexShrink: 0 }} />
+                    <span style={{ fontSize: 13.5, color: done ? C.ivory : C.faint, flex: 1 }}>{m.label}</span>
+                    <span style={{ fontSize: 11.5, color: C.faint }}>{m.threshold.toLocaleString()}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
+
+      {levelUp && (
+        <div onClick={() => setLevelUp(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 51, background: "rgba(6,14,12,0.78)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 26 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 380, width: "100%", background: C.surface2, border: `1px solid ${levelUp.theme.ring}66`, borderRadius: 20, padding: 26, textAlign: "center" }} className="fadeUp">
+            <div style={{ fontSize: 10.5, letterSpacing: 3, textTransform: "uppercase", color: levelUp.theme.ring, marginBottom: 10 }}>New Level Reached</div>
+            <div className="amiri" style={{ fontSize: 34, color: levelUp.theme.ring, lineHeight: 1.5 }}>{levelUp.ar}</div>
+            <div className="display" style={{ fontSize: 26, fontWeight: 600, marginTop: 4 }}>{levelUp.name}</div>
+            <div style={{ fontSize: 11, letterSpacing: 2.5, textTransform: "uppercase", color: C.faint, marginTop: 2 }}>
+              Level {levelUp.id} · {levelUp.en}
+            </div>
+            <div style={{ fontSize: 13.5, color: C.muted, marginTop: 14, lineHeight: 1.6, fontStyle: "italic" }}>{levelUp.note}</div>
+            <div style={{ fontSize: 12.5, color: C.ivory, marginTop: 16, lineHeight: 1.6 }}>
+              The whole app's colours have just changed to mark it — the deeper the journey, the richer the theme.
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 16 }}>
+              {[levelUp.theme.ring, levelUp.theme.gold, levelUp.theme.goldBright].map((c, i) => (
+                <div key={i} style={{ width: 22, height: 22, borderRadius: 6, background: c }} />
+              ))}
+            </div>
+            <button onClick={() => setLevelUp(null)}
+              style={{ ...goldBtn, background: levelUp.theme.ring, marginTop: 22, width: "auto", padding: "10px 28px" }}>
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* -------- bottom nav -------- */}
       <nav style={{
