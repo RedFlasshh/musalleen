@@ -63,12 +63,30 @@ insert into salawat_formats (slug, title, arabic_text, transliteration, translat
  'Allahumma salli ala Sayyidina Muhammadin tibbil-qulubi wa dawaiha, wa ''afiyatil-abdani wa shifaiha, wa nooril-absari wa diyaiha, wa ala aalihi wa sahbihi wa sallam',
  'O Allah, send blessings upon our master Muhammad, the healer of hearts and their cure, the wellbeing of bodies and their healing, the light of sight and its radiance, and upon his family and companions, and grant peace.',
  'Widely known as Salawat Tibbil Qulub, popularly attributed to Imam ash-Shafi''i in later devotional tradition — not a hadith narration, and its chain back to him is not established the way the Ibrahimiyyah wordings are. Included as one of the most widely-recited named salawat across the Muslim world.',
- 'collection', 7, true)
--- Deliberately still not adding the more contested tariqa/collection-specific
--- salawat (Dala'il al-Khayrat excerpts, Salawat al-Fatih, Nariyah, etc.) —
--- those carry group-specific association and authenticity questions I'm not
--- positioned to adjudicate. If wanted, they should come from the user's
--- own sourced text, same content-authoring boundary held throughout.
+ 'collection', 7, true),
+('munjiyah', 'Salawat al-Munjiyah (The Saving Prayer)',
+ 'اللَّهُمَّ صَلِّ عَلَى سَيِّدِنَا مُحَمَّدٍ صَلَاةً تُنْجِينَا بِهَا مِنْ جَمِيعِ الْأَهْوَالِ وَالْآفَاتِ، وَتَقْضِي لَنَا بِهَا جَمِيعَ الْحَاجَاتِ، وَتُطَهِّرُنَا بِهَا مِنْ جَمِيعِ السَّيِّئَاتِ، وَتَرْفَعُنَا بِهَا عِنْدَكَ أَعْلَى الدَّرَجَاتِ، وَتُبَلِّغُنَا بِهَا أَقْصَى الْغَايَاتِ مِنْ جَمِيعِ الْخَيْرَاتِ فِي الْحَيَاةِ وَبَعْدَ الْمَمَاتِ إِنَّكَ عَلَى كُلِّ شَيْءٍ قَدِيرٌ',
+ 'Allahumma salli ala Sayyidina Muhammadin salatan tunjeena biha min jami''il-ahwali wal-afat, wa taqdi lana biha jami'' al-hajat, wa tutahhiruna biha min jami'' is-sayyi''at, wa tarfa''una biha ''indaka a''lad-darajat, wa tuballighuna biha aqsal-ghayati min jami'' il-khayrati fil-hayati wa ba''dal-mamat, innaka ''ala kulli shay''in Qadir',
+ 'O Allah, send blessings upon our master Muhammad — blessings by which You save us from all terrors and afflictions, through which You fulfill for us all our needs, through which You purify us of all misdeeds, through which You raise us to the highest ranks in Your sight, and through which You bring us to the utmost limits of all good, in this life and after death. Indeed, You have power over all things.',
+ 'Known as Salawat al-Munjiyah ("The Saving Prayer"), one of the most widely recited named salawat across the Muslim world. Devotional in origin — not a hadith narration, and not tied to a specific scholar''s authorship.',
+ 'collection', 8, true),
+('nariyah', 'Salawat an-Nariyah',
+ 'اللَّهُمَّ صَلِّ صَلَاةً كَامِلَةً وَسَلِّمْ سَلَامًا تَامًّا عَلَى سَيِّدِنَا مُحَمَّدٍ الَّذِي تَنْحَلُّ بِهِ الْعُقَدُ، وَتَنْفَرِجُ بِهِ الْكُرَبُ، وَتُقْضَى بِهِ الْحَوَائِجُ، وَتُنَالُ بِهِ الرَّغَائِبُ وَحُسْنُ الْخَوَاتِيمِ، وَيُسْتَسْقَى الْغَمَامُ بِوَجْهِهِ الْكَرِيمِ، وَعَلَى آلِهِ وَصَحْبِهِ فِي كُلِّ لَمْحَةٍ وَنَفَسٍ بِعَدَدِ كُلِّ مَعْلُومٍ لَكَ',
+ 'Allahumma salli salatan kamilatan wa sallim salaman tamman ala Sayyidina Muhammadin alladhi tanhallu bihil-''uqadu, wa tanfariju bihil-kurabu, wa tuqda bihil-hawa''iju, wa tunalu bihir-raghaibu wa husnul-khawatimi, wa yustasqal-ghamamu bi-wajhihil-karimi, wa ala aalihi wa sahbihi fi kulli lamhatin wa nafasin bi-''adadi kulli ma''lumin lak',
+ 'O Allah, send complete blessings and perfect peace upon our master Muhammad, through whom knots are undone, distresses are relieved, needs are met, desires and good endings are attained, and clouds are made to bring rain by his noble countenance — and upon his family and companions, in every glance and every breath, by the count of everything known to You.',
+ 'Widely known as Salawat an-Nariyah (also called Salawat al-Kamaliyyah or at-Tafrijiyyah), extremely popular across South Asia and West Africa. Included at the user''s request with a disputed label: the popular backstory attached to its name is not established, and some scholars have questioned claims made about its virtues in circulated literature — unlike the Ibrahimiyyah and hadith-narrated forms above, this one is not presented as authenticated.',
+ 'collection', 9, true),
+('shafii-dhakirun', 'Ever-Present Blessings (Imam Shafi''i)',
+ 'اللَّهُمَّ صَلِّ عَلَى سَيِّدِنَا مُحَمَّدٍ كُلَّمَا ذَكَرَهُ الذَّاكِرُونَ، وَصَلِّ عَلَى سَيِّدِنَا مُحَمَّدٍ كُلَّمَا غَفَلَ عَنْ ذِكْرِهِ الْغَافِلُونَ',
+ 'Allahumma salli ala Sayyidina Muhammadin kullama dhakarahudh-dhaakiroon, wa salli ala Sayyidina Muhammadin kullama ghafala ''an dhikrihil-ghaafiloon',
+ 'O Allah, send blessings upon our master Muhammad as many times as those who remember him remember him, and send blessings upon our master Muhammad as many times as those who are heedless of remembering him are heedless.',
+ 'Popularly attributed to Imam ash-Shafi''i in devotional tradition, alongside Salawat Tibbil Qulub above — not a hadith narration, and its chain back to him is not established the way the Ibrahimiyyah wordings are.',
+ 'collection', 10, true)
+-- Deliberately still not adding Salawat al-Fatih, al-Badawiyyah, or Dala'il
+-- al-Khayrat excerpts — those carry stronger tariqa-specific association and
+-- authenticity questions than Nariyah/Munjiyah/Tibbil Qulub above, and
+-- weren't asked for. If wanted, they should come from the user's own
+-- sourced text, same content-authoring boundary held throughout.
 on conflict (slug) do nothing;
 
 insert into virtues (title, body, source, category, is_friday_special, sort_order) values
