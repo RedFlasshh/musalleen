@@ -33,6 +33,20 @@ const GUEST_FORMAT_KEY = "musalleen-guest-format"; // format id — device-only
 const GUEST_TOTAL_KEY = "musalleen-guest-total"; // lifetime count integer — device-only, drives guest-mode levels
 const LEVEL_SEEN_KEY = "musalleen-level-seen"; // highest level id already celebrated, so the level-up modal fires once per level
 
+// Public by design — this is the VAPID *public* key, safe to ship in client
+// code (it identifies the sender to the push service, it doesn't authorize
+// anything). The private key never leaves the edge function's own secrets.
+const VAPID_PUBLIC_KEY = "BD86iK6lOy7NFqY_DzMyU7cgNUDFT8nvgzj9I1YutkfPd9hemANHoyHfdeZ6g3EaZgUAdHK8r45wea8kJF5bXhk";
+
+const urlBase64ToUint8Array = (base64String) => {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+};
+
 // Function, not a module-level constant: Capacitor's bridge (window.Capacitor)
 // attaches asynchronously, and this module can finish evaluating before it
 // does — a constant computed once at parse time would freeze in as `false`
@@ -77,6 +91,8 @@ export default function Musalleen() {
   const [browseIdx, setBrowseIdx] = useState(0);
   const [guestTotal, setGuestTotal] = useState(0);
   const [levelUp, setLevelUp] = useState(null); // level object, shown once when newly reached
+  const [reminderBusy, setReminderBusy] = useState(false);
+  const [reminderNote, setReminderNote] = useState("");
 
   const today = dayKeyInTz(profile?.timezone || deviceTz());
   const totalLifetimeCount = guest ? guestTotal : (profile?.total_lifetime_count || 0);
@@ -294,6 +310,68 @@ export default function Musalleen() {
     queueDelta(today, format.id, 1);
     setPending((p) => p + 1);
     scheduleFlush();
+  };
+
+  // Requests notification permission, subscribes this device via the
+  // service worker's push manager, and saves the subscription so the
+  // send-reminders edge function can find it. Only meaningful for signed-in
+  // users -- the cron job looks up subscriptions by user_id, which guests
+  // don't have.
+  const subscribeToPush = async () => {
+    if (!session?.user) return false;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setReminderNote("Push notifications aren't supported in this browser.");
+      return false;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setReminderNote("Notification permission was not granted.");
+        return false;
+      }
+      const registration = await navigator.serviceWorker.ready;
+      let sub = await registration.pushManager.getSubscription();
+      if (!sub) {
+        sub = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+      }
+      const json = sub.toJSON();
+      const { error } = await supabase.from("push_subscriptions").upsert({
+        user_id: session.user.id,
+        endpoint: json.endpoint,
+        p256dh: json.keys.p256dh,
+        auth: json.keys.auth,
+      }, { onConflict: "endpoint" });
+      if (error) throw error;
+      return true;
+    } catch (e) {
+      console.error("push subscription failed", e);
+      setReminderNote("Could not enable notifications on this device.");
+      return false;
+    }
+  };
+
+  const updateReminderSettings = async (updates) => {
+    if (!session?.user) return;
+    setReminderBusy(true);
+    setReminderNote("");
+    try {
+      const enablingSomething = updates.reminder_enabled || updates.friday_reminder_enabled;
+      if (enablingSomething) {
+        const ok = await subscribeToPush();
+        if (!ok) { setReminderBusy(false); return; }
+      }
+      setProfile((p) => (p ? { ...p, ...updates } : p));
+      const { error } = await supabase.from("profiles").update(updates).eq("id", session.user.id);
+      if (error) throw error;
+    } catch (e) {
+      console.error("reminder settings update failed", e);
+      setReminderNote("Could not save reminder settings.");
+    } finally {
+      setReminderBusy(false);
+    }
   };
 
   const selectFormat = async (f) => {
@@ -588,6 +666,59 @@ export default function Musalleen() {
                   </div>
                 );
               })}
+            </div>
+
+            <div style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 16, padding: 18, marginTop: 12 }}>
+              <div style={{ fontSize: 10.5, letterSpacing: 1.5, textTransform: "uppercase", color: C.faint, marginBottom: 12 }}>Reminders</div>
+              {guest ? (
+                <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.6 }}>Sign in to enable daily and Friday reminders.</div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 14, color: C.ivory }}>Daily reminder</div>
+                      <div style={{ fontSize: 11.5, color: C.faint }}>Only sent if today's goal isn't met yet</div>
+                    </div>
+                    <button
+                      onClick={() => updateReminderSettings({ reminder_enabled: !profile?.reminder_enabled, reminder_time: profile?.reminder_time || "20:00:00" })}
+                      disabled={reminderBusy}
+                      style={{
+                        width: 44, height: 26, borderRadius: 999, border: "none", cursor: "pointer", position: "relative",
+                        background: profile?.reminder_enabled ? C.gold : C.line, flexShrink: 0, opacity: reminderBusy ? 0.6 : 1,
+                      }}>
+                      <span style={{ position: "absolute", top: 3, left: profile?.reminder_enabled ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: C.ivory, transition: "left .15s ease" }} />
+                    </button>
+                  </div>
+                  {profile?.reminder_enabled && (
+                    <input type="time" value={(profile?.reminder_time || "20:00:00").slice(0, 5)}
+                      onChange={(e) => updateReminderSettings({ reminder_time: `${e.target.value}:00` })}
+                      style={{ ...inputStyle, marginBottom: 14, colorScheme: "dark" }} />
+                  )}
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 14, color: C.ivory }}>Friday reminder</div>
+                      <div style={{ fontSize: 11.5, color: C.faint }}>A second, separate push — salawat is presented to him ﷺ on Fridays</div>
+                    </div>
+                    <button
+                      onClick={() => updateReminderSettings({ friday_reminder_enabled: !profile?.friday_reminder_enabled, friday_reminder_time: profile?.friday_reminder_time || "12:00:00" })}
+                      disabled={reminderBusy}
+                      style={{
+                        width: 44, height: 26, borderRadius: 999, border: "none", cursor: "pointer", position: "relative",
+                        background: profile?.friday_reminder_enabled ? C.gold : C.line, flexShrink: 0, opacity: reminderBusy ? 0.6 : 1,
+                      }}>
+                      <span style={{ position: "absolute", top: 3, left: profile?.friday_reminder_enabled ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: C.ivory, transition: "left .15s ease" }} />
+                    </button>
+                  </div>
+                  {profile?.friday_reminder_enabled && (
+                    <input type="time" value={(profile?.friday_reminder_time || "12:00:00").slice(0, 5)}
+                      onChange={(e) => updateReminderSettings({ friday_reminder_time: `${e.target.value}:00` })}
+                      style={{ ...inputStyle, colorScheme: "dark" }} />
+                  )}
+
+                  {reminderNote && <div style={{ fontSize: 11.5, color: C.warn, marginTop: 10, lineHeight: 1.5 }}>{reminderNote}</div>}
+                </>
+              )}
             </div>
           </div>
         )}
