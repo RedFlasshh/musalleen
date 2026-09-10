@@ -17,6 +17,19 @@
 -- Anything here should be scholar-reviewed before wide release, same caution
 -- Mustaghfirin's own i18n file flags for its Urdu translations.
 
+-- salawat_formats: seeded with the one universally-known, uncontroversial
+-- form (recited in every prayer's tashahhud, taught by the Prophet ﷺ
+-- himself in response to the companions' question of how to send blessings
+-- upon him). Additional formats (short forms, other collections) are
+-- explicitly Phase 4 work — this seed only proves the schema shape.
+insert into salawat_formats (slug, title, arabic_text, transliteration, translation, source_note, category, sort_order, is_active) values
+('ibrahimiyyah', 'Salawat Ibrahimiyyah', 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ كَمَا صَلَّيْتَ عَلَى إِبْرَاهِيمَ وَعَلَى آلِ إِبْرَاهِيمَ إِنَّكَ حَمِيدٌ مَجِيدٌ',
+ 'Allahumma salli ala Muhammadin wa ala aali Muhammad, kama sallayta ala Ibrahima wa ala aali Ibrahim, innaka Hamidun Majid',
+ 'O Allah, send blessings upon Muhammad and the family of Muhammad, as You sent blessings upon Ibrahim and the family of Ibrahim. Indeed You are Praiseworthy, Glorious.',
+ 'The salutation taught by the Prophet ﷺ himself when the companions asked how to send blessings upon him, recited in every prayer''s tashahhud.',
+ 'tashahhud', 1, true)
+on conflict (slug) do nothing;
+
 insert into virtues (title, body, source, category, is_friday_special, sort_order) values
 
 -- QURAN — there is essentially one direct verse commanding this; kept small
